@@ -3,7 +3,7 @@ module github.com/abihf/podrefresh
 go 1.25.5
 
 require (
-	github.com/abihf/cache-loader v0.3.0
+	github.com/abihf/cache-loader v0.4.0
 	github.com/google/go-containerregistry v0.20.7
 	golang.org/x/sync v0.19.0
 	k8s.io/api v0.35.0
@@ -36,7 +36,7 @@ require (
 	github.com/go-openapi/swag/yamlutils v0.25.4 // indirect
 	github.com/google/gnostic-models v0.7.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/hashicorp/golang-lru v0.5.4 // indirect
+	github.com/hashicorp/golang-lru v1.0.2 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.18.2 // indirect
 	github.com/kr/text v0.2.0 // indirect

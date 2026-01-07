@@ -2,20 +2,18 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"log/slog"
 
-	loader "github.com/abihf/cache-loader"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	regv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"golang.org/x/sync/errgroup"
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -52,7 +50,8 @@ func _main() error {
 	}
 
 	eg, egCtx := errgroup.WithContext(ctx)
-	globalImageHashCache := loader.New(latestImageHashFetcher(RegistryAuths{}), loaderTtl, loader.WithContextFactory(func() context.Context { return egCtx }))
+	repo := NewRepo(clientset)
+	// globalImageHashCache := loader.New(latestImageHashFetcher(RegistryAuths{}), loaderTtl, loader.WithContextFactory(func() context.Context { return egCtx }))
 
 	for _, pod := range pods.Items {
 		owner := pod.ObjectMeta.OwnerReferences
@@ -69,14 +68,6 @@ func _main() error {
 			if container.ImagePullPolicy == "Always" {
 				hasAlwaysPull = true
 				containerAlwaysPull[container.Name] = true
-				break
-			}
-		}
-		for _, container := range pod.Spec.InitContainers {
-			if container.ImagePullPolicy == "Always" {
-				hasAlwaysPull = true
-				containerAlwaysPull[container.Name] = true
-				break
 			}
 		}
 		if !hasAlwaysPull {
@@ -84,44 +75,14 @@ func _main() error {
 		}
 
 		eg.Go(func() error {
-			auth := make(RegistryAuths)
-			for _, secretRef := range pod.Spec.ImagePullSecrets {
-				secret, err := clientset.CoreV1().Secrets(pod.Namespace).Get(egCtx, secretRef.Name, metav1.GetOptions{})
-				if err != nil {
-					return fmt.Errorf("failed to get image pull secret %s/%s: %w", pod.Namespace, secretRef.Name, err)
-				}
-				if secret.Type != corev1.SecretTypeDockerConfigJson {
-					continue
-				}
-				dockerConfigJson, ok := secret.Data[corev1.DockerConfigJsonKey]
-				if !ok {
-					continue
-				}
-				configs, err := parseDockerConfigJson(dockerConfigJson)
-				if err != nil {
-					return fmt.Errorf("failed to parse docker config json from secret %s/%s: %w", pod.Namespace, secretRef.Name, err)
-				}
-				for registry, conf := range configs.Auths {
-					auth[registry] = &authn.Basic{
-						Username: conf.Username,
-						Password: conf.Password,
-					}
-				}
-			}
-
-			feg, fegCtx := errgroup.WithContext(egCtx)
-			imageHashCache := globalImageHashCache
-			if len(auth) > 0 {
-				imageHashCache = loader.New(latestImageHashFetcher(auth), loaderTtl, loader.WithContextFactory(func() context.Context { return fegCtx }))
-			}
-
+			feg := errgroup.Group{}
 			for _, status := range pod.Status.ContainerStatuses {
 				if !containerAlwaysPull[status.Name] {
 					continue
 				}
 				feg.Go(func() error {
 					currentHash := strings.Split(status.ImageID, ":")[1]
-					latestHash, err := imageHashCache.Load(status.Image)
+					latestHash, err := repo.GetImageDigest(status.Image, pod.Namespace, pod.Spec.ImagePullSecrets)
 					if err != nil {
 						slog.Warn("failed to get latest image hash for image", "image", status.Image, "error", err)
 						return nil
@@ -133,16 +94,17 @@ func _main() error {
 				})
 			}
 			err = feg.Wait()
-			if err != nil && err != NeedUpdateErr {
-				return fmt.Errorf("failed to check images for pod %s/%s: %w", pod.Namespace, pod.Name, err)
+			if err == nil {
+				return nil
 			}
-			if err == NeedUpdateErr {
-				err = clientset.CoreV1().Pods(pod.Namespace).Delete(egCtx, pod.Name, metav1.DeleteOptions{})
-				if err != nil {
-					return fmt.Errorf("failed to delete pod %s/%s: %w", pod.Namespace, pod.Name, err)
-				}
-				slog.Info("Deleted pod to force image pull", "namespace", pod.Namespace, "name", pod.Name)
+			if !errors.Is(err, NeedUpdateErr) {
+				return err
 			}
+			err = clientset.CoreV1().Pods(pod.Namespace).Delete(egCtx, pod.Name, metav1.DeleteOptions{})
+			if err != nil {
+				return fmt.Errorf("failed to delete pod %s/%s: %w", pod.Namespace, pod.Name, err)
+			}
+			slog.Info("Deleted pod to force image pull", "namespace", pod.Namespace, "name", pod.Name)
 			return nil
 		})
 	}
@@ -193,22 +155,6 @@ func (r RegistryAuths) Resolve(resource authn.Resource) (authn.Authenticator, er
 
 	// Fallback to anonymous
 	return authn.Anonymous, nil
-}
-
-type DockerConfig struct {
-	Auths map[string]struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-	} `json:"auths"`
-}
-
-func parseDockerConfigJson(data []byte) (*DockerConfig, error) {
-	var config DockerConfig
-	err := json.Unmarshal(data, &config)
-	if err != nil {
-		return nil, err
-	}
-	return &config, nil
 }
 
 func getK8sClient() (*kubernetes.Clientset, error) {
