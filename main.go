@@ -46,15 +46,37 @@ func _main() error {
 		return fmt.Errorf("failed to get Kubernetes client: %w", err)
 	}
 
-	pods, err := clientset.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return fmt.Errorf("failed to list pods: %w", err)
-	}
-
 	eg, egCtx := errgroup.WithContext(ctx)
 	globalImageHashCache := loader.New(latestImageHashFetcher(RegistryAuths{}), loaderTtl, loader.WithContextFactory(func() context.Context { return egCtx }))
 
-	for _, pod := range pods.Items {
+	pods := make(chan *corev1.Pod, 100)
+	eg.Go(func() error {
+		defer close(pods)
+		cont := ""
+		for {
+			podList, err := clientset.CoreV1().Pods("").List(egCtx, metav1.ListOptions{
+				Continue: cont,
+				Limit:    16,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to list pods: %w", err)
+			}
+			for _, pod := range podList.Items {
+				select {
+				case <-egCtx.Done():
+					return nil
+				case pods <- &pod:
+				}
+			}
+			cont = podList.Continue
+			if cont == "" {
+				return nil
+			}
+		}
+
+	})
+
+	for pod := range pods {
 		if pod.Status.Phase != corev1.PodRunning {
 			continue
 		}
@@ -66,23 +88,14 @@ func _main() error {
 			continue
 		}
 
-		hasAlwaysPull := false
 		containerAlwaysPull := make(map[string]bool)
 		for _, container := range pod.Spec.Containers {
 			if container.ImagePullPolicy == "Always" {
-				hasAlwaysPull = true
 				containerAlwaysPull[container.Name] = true
 				break
 			}
 		}
-		for _, container := range pod.Spec.InitContainers {
-			if container.ImagePullPolicy == "Always" {
-				hasAlwaysPull = true
-				containerAlwaysPull[container.Name] = true
-				break
-			}
-		}
-		if !hasAlwaysPull {
+		if len(containerAlwaysPull) == 0 {
 			continue
 		}
 
