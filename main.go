@@ -55,6 +55,9 @@ func _main() error {
 	globalImageHashCache := loader.New(latestImageHashFetcher(RegistryAuths{}), loaderTtl, loader.WithContextFactory(func() context.Context { return egCtx }))
 
 	for _, pod := range pods.Items {
+		if pod.Status.Phase != corev1.PodRunning {
+			continue
+		}
 		owner := pod.ObjectMeta.OwnerReferences
 		if len(owner) == 0 {
 			continue
