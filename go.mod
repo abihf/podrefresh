@@ -3,7 +3,7 @@ module github.com/abihf/podrefresh
 go 1.25.5
 
 require (
-	github.com/abihf/cache-loader v0.4.0
+	github.com/abihf/cache-loader v0.4.1
 	github.com/google/go-containerregistry v0.20.7
 	golang.org/x/sync v0.19.0
 	k8s.io/api v0.35.0

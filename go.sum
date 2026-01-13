@@ -1,7 +1,7 @@
 github.com/Masterminds/semver/v3 v3.4.0 h1:Zog+i5UMtVoCU8oKka5P7i9q9HgrJeGzI9SA1Xbatp0=
 github.com/Masterminds/semver/v3 v3.4.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
-github.com/abihf/cache-loader v0.4.0 h1:KDsmiGSJTcczYv93QDi+9FWxPatBUq6QltFxiG3lfMQ=
-github.com/abihf/cache-loader v0.4.0/go.mod h1:Jg8zuo+VmtCTcTjhRevVzKREQ5IDwm+k//r6m/3uFvg=
+github.com/abihf/cache-loader v0.4.1 h1:T5Th/sAiDaA1ZJED6hbuB/MNz6LUF5nFu+MKT80Iii8=
+github.com/abihf/cache-loader v0.4.1/go.mod h1:Jg8zuo+VmtCTcTjhRevVzKREQ5IDwm+k//r6m/3uFvg=
 github.com/containerd/stargz-snapshotter/estargz v0.18.1 h1:cy2/lpgBXDA3cDKSyEfNOFMA/c10O1axL69EU7iirO8=
 github.com/containerd/stargz-snapshotter/estargz v0.18.1/go.mod h1:ALIEqa7B6oVDsrF37GkGN20SuvG/pIMm7FwP7ZmRb0Q=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
