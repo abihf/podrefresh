@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 	"strings"
+	"sync"
 
 	"log/slog"
 
@@ -30,6 +32,16 @@ var allowedOwnerKinds = map[string]bool{
 
 var NeedUpdateErr = fmt.Errorf("need update")
 
+type PodInfo struct {
+	Namespace string
+	Name      string
+}
+
+type PodInfos struct {
+	mu   sync.Mutex
+	pods []*PodInfo
+}
+
 func _main() error {
 	ctx := context.Background()
 	clientset, err := getK8sClient()
@@ -39,6 +51,8 @@ func _main() error {
 
 	eg, egCtx := errgroup.WithContext(ctx)
 	repo := NewRepo(egCtx, clientset)
+
+	var toBeDeleted PodInfos
 
 	pods := make(chan *corev1.Pod, 100)
 	eg.Go(func() error {
@@ -118,13 +132,22 @@ func _main() error {
 			if !errors.Is(err, NeedUpdateErr) {
 				return err
 			}
-			err = clientset.CoreV1().Pods(pod.Namespace).Delete(egCtx, pod.Name, metav1.DeleteOptions{})
-			if err != nil {
-				return fmt.Errorf("failed to delete pod %s/%s: %w", pod.Namespace, pod.Name, err)
-			}
-			slog.Info("Deleted pod to force image pull", "namespace", pod.Namespace, "name", pod.Name)
+			fmt.Printf("Pod %s/%s needs to be updated (image pull)\n", pod.Namespace, pod.Name)
+			toBeDeleted.Add(pod.Namespace, pod.Name)
 			return nil
 		})
+	}
+
+	err = eg.Wait()
+	if err != nil {
+		return fmt.Errorf("error processing pods: %w", err)
+	}
+	for podInfo := range toBeDeleted.Iter() {
+		fmt.Printf("Deleting pod %s/%s\n", podInfo.Namespace, podInfo.Name)
+		err := clientset.CoreV1().Pods(podInfo.Namespace).Delete(ctx, podInfo.Name, metav1.DeleteOptions{})
+		if err != nil {
+			slog.Error("failed to delete pod", "namespace", podInfo.Namespace, "name", podInfo.Name, "error", err)
+		}
 	}
 
 	return eg.Wait()
@@ -147,4 +170,25 @@ func getK8sClient() (*kubernetes.Clientset, error) {
 		return nil, err
 	}
 	return clientset, nil
+}
+
+func (p *PodInfos) Add(namespace, name string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.pods = append(p.pods, &PodInfo{
+		Namespace: namespace,
+		Name:      name,
+	})
+}
+
+func (p *PodInfos) Iter() iter.Seq[*PodInfo] {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return func(yield func(*PodInfo) bool) {
+		for _, pod := range p.pods {
+			if !yield(pod) {
+				return
+			}
+		}
+	}
 }
