@@ -30,6 +30,7 @@ type Repo struct {
 	pullSecrets   sync.Map
 	secretFetcher *loader.Loader[string, DockerAuths]
 	digestFetcher *loader.Loader[string, string]
+	remoteOptions []remote.Option
 }
 
 func NewRepo(ctx context.Context, clientset *kubernetes.Clientset) *Repo {
@@ -42,6 +43,14 @@ func NewRepo(ctx context.Context, clientset *kubernetes.Clientset) *Repo {
 	}
 	r.secretFetcher = loader.New(r.fetchSecret, 0, loader.WithContextFactory(cf))
 	r.digestFetcher = loader.New(r.fetchDigest, 0, loader.WithContextFactory(cf))
+	r.remoteOptions = []remote.Option{
+		remote.WithContext(ctx),
+		remote.WithAuthFromKeychain(r),
+		remote.WithPlatform(regv1.Platform{
+			Architecture: "amd64",
+			OS:           "linux",
+		}),
+	}
 	return r
 }
 
@@ -74,13 +83,7 @@ func (r *Repo) fetchDigest(ctx context.Context, image string) (string, error) {
 	}
 
 	// Get remote image descriptor
-	desc, err := remote.Get(ref,
-		remote.WithContext(ctx),
-		remote.WithAuthFromKeychain(r),
-		remote.WithPlatform(regv1.Platform{
-			Architecture: "amd64",
-			OS:           "linux",
-		}))
+	desc, err := remote.Get(ref, r.remoteOptions...)
 	if err != nil {
 		return "", fmt.Errorf("failed to get image descriptor: %w", err)
 	}
