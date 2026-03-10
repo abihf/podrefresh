@@ -5,7 +5,7 @@ go 1.25.6
 require (
 	github.com/abihf/cache-loader v0.4.1
 	github.com/google/go-containerregistry v0.21.0
-	golang.org/x/sync v0.19.0
+	golang.org/x/sync v0.20.0
 	k8s.io/api v0.35.0
 	k8s.io/apimachinery v0.35.0
 	k8s.io/client-go v0.35.0
