@@ -13,16 +13,18 @@ PodRefresh monitors Kubernetes pods with `imagePullPolicy: Always` and checks if
 - ✅ Authentication via Kubernetes `imagePullSecrets`
 - ✅ Only processes pods with `imagePullPolicy: Always`
 - ✅ Works with ReplicaSets, DaemonSets, and StatefulSets
+- ✅ Per-pod opt-out via the `podrefresh.hafs.in/exclude` annotation
 - ✅ Minimal resource footprint (built on scratch)
 
 ## How It Works
 
 1. Lists all pods across all namespaces
 2. Filters pods with `imagePullPolicy: Always` and valid owner references
-3. Reads authentication credentials from pod's `imagePullSecrets`
-4. Queries the container registry for the latest image digest
-5. Compares registry digest with the pod's current image digest
-6. Deletes pods when newer images are available, triggering automatic recreation
+3. Skips pods annotated with `podrefresh.hafs.in/exclude`
+4. Reads authentication credentials from pod's `imagePullSecrets`
+5. Queries the container registry for the latest image digest
+6. Compares registry digest with the pod's current image digest
+7. Deletes pods when newer images are available, triggering automatic recreation
 
 ## Installation
 
@@ -77,6 +79,26 @@ spec:
     image: registry.example.com/my-app:latest
     imagePullPolicy: Always
 ```
+
+## Excluding Pods
+
+Add the `podrefresh.hafs.in/exclude` annotation to any pod to prevent it from being refreshed. The annotation's value is ignored.
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-app
+  annotations:
+    podrefresh.hafs.in/exclude: "true"
+spec:
+  containers:
+  - name: app
+    image: registry.example.com/my-app:latest
+    imagePullPolicy: Always
+```
+
+For controller-managed pods, add the annotation to the pod template so every recreated pod inherits it.
 
 ## Supported Registries
 

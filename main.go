@@ -78,6 +78,9 @@ func _main() error {
 		if pod == nil {
 			break
 		}
+		if _, excluded := pod.Annotations["podrefresh.hafs.in/exclude"]; excluded {
+			continue
+		}
 		if pod.Status.Phase != corev1.PodRunning {
 			continue
 		}
